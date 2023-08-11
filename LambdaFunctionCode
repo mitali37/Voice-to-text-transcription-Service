@@ -1,0 +1,56 @@
+import json
+import boto3
+import uuid
+
+s3_client = boto3.client('s3')
+transcribe = boto3.client('transcribe')
+sns_client = boto3.client('sns')
+
+def lambda_handler(event, context):
+    print('I am mitali')
+    
+    filename = event['Records'][0]['s3']['object']['key']
+    bucketname = event['Records'][0]['s3']['bucket']['name']
+    
+    url = "s3://" + bucketname + "/" + filename
+    
+    myuuid = uuid.uuid1().int
+    
+    job_name = "mynewaudiojob" + "-" + str(myuuid)
+    
+    response = transcribe.start_transcription_job(
+        
+                    TranscriptionJobName = job_name,
+                    LanguageCode = 'en-US',
+                    MediaFormat='mp3',
+                    Media={
+                        'MediaFileUri': url
+                        },
+                    OutputBucketName="transaudiooutput",
+                    OutputKey="myoutputaudio" + "-" + str(myuuid) + ".json"
+                    
+                            )        
+     
+    while True:
+        response = transcribe.get_transcription_job(TranscriptionJobName = job_name)
+        status = response['TranscriptionJob']['TranscriptionJobStatus']
+        
+        if status == 'COMPLETED':
+            # Send SNS notification
+            message = f"Transcription job {job_name} has been completed."
+            sns_client.publish(
+                TopicArn='arn:aws:sns:ap-south-1:385772294515:myfirstnotification',
+                Message= message ,
+                Subject='Transcription Job Completed'
+            )
+            
+            break  # Exit the loop when job is completed
+   
+    print(response)
+    return {
+        'statusCode': 200,
+        'body': {
+            'message': 'Transcription job started and SNS notification sent',
+            'job_name': job_name
+        }
+    }
